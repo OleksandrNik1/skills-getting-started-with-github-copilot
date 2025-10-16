@@ -3,6 +3,38 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  
+  // Delegate delete/unregister clicks from participant delete buttons
+  activitiesList.addEventListener("click", async (event) => {
+    const button = event.target.closest(".delete-participant");
+    if (!button) return;
+
+    const activity = button.dataset.activity;
+    const email = button.dataset.email;
+
+    if (!activity || !email) return;
+
+    const confirmed = confirm(`Unregister ${email} from ${activity}?`);
+    if (!confirmed) return;
+
+    try {
+      const resp = await fetch(
+        `/activities/${encodeURIComponent(activity)}/participants?email=${encodeURIComponent(email)}`,
+        { method: "DELETE" }
+      );
+
+      const result = await resp.json();
+      if (resp.ok) {
+        // Refresh the activities list to reflect the change
+        fetchActivities();
+      } else {
+        alert(result.detail || result.message || "Failed to unregister participant");
+      }
+    } catch (err) {
+      console.error("Error unregistering participant:", err);
+      alert("Failed to unregister participant. See console for details.");
+    }
+  });
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -12,6 +44,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      // Reset activity select to the placeholder to avoid duplicate options on refresh
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -20,12 +54,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const spotsLeft = details.max_participants - details.participants.length;
 
-        // Build participants HTML: bulleted list or a friendly "no participants" note
+        // Build participants HTML: hide bullets and add a delete button next to each participant
         const participantsHtml = details.participants && details.participants.length
           ? `<div class="participants">
                <div class="participants-title">Participants</div>
                <ul class="participants-list">
-                 ${details.participants.map((p) => `<li>${p}</li>`).join("")}
+                 ${details.participants.map((p) => `
+                   <li>
+                     <span class="participant-email">${p}</span>
+                     <button class="delete-participant" data-activity="${encodeHTML(name)}" data-email="${encodeHTML(p)}" aria-label="Unregister ${p}">🗑️</button>
+                   </li>`).join("")}
                </ul>
              </div>`
           : `<div class="participants">
@@ -54,6 +92,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Simple HTML encoder to avoid injecting attributes with raw values
+  function encodeHTML(str) {
+    return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
   // Handle form submission
   signupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -75,6 +118,8 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        // Refresh activities so the newly-signed-up participant appears immediately
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
